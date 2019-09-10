@@ -1,0 +1,270 @@
+---
+title: "Functional Programming R Notes"
+author: "Ruonan Zhang"
+date: "June 24, 2019"
+output: html_document
+---
+
+This note does not concentrate on a systematic summary of functional programming. It list some application and examples that could often happens in regular data analysis. 
+
+
+1. Dynamic Lookup & Lazy evaluation
+
+R function is using dynamic lookup, which could make the function not self-contained.
+```{r}
+f = function() x
+x = 15 #x is assigned after function is created, this should be avoided.
+f()
+```
+
+Here's an example of lazy evaluation. When h is being called, it first create d, and b is evaluated until called. This should be avoided unless necessary.
+```{r}
+h = function(a = 1, b = d) { #d is not defined when creating the input
+  d = (a + 1) ^ 2
+  c(a, b)
+}
+
+h()
+```
+
+---
+
+2. Function list
+
+Get results/compare run times for different functions
+```{r}
+compute_mean <- list(
+  base = function(x) mean(x),
+  sum = function(x) sum(x) / length(x),
+  manual = function(x) {
+    total <- 0
+    n <- length(x)
+    for (i in seq_along(x)) {
+      total <- total + x[i] / n
+    }
+    total
+  }
+)
+```
+Function could be an input of function, functions created by functions are called `Closure`, **because they enclose the environment of the parent function and can access all its variables**.
+
+The anonymous function below creates closure. 
+```{r}
+x = runif(1e5)
+lapply(compute_mean, function(f) system.time(f(x)))
+```
+Or use `...` as the notation of flexible inputs
+```{r}
+call_fun <- function(f, ...) f(...)
+lapply(compute_mean, call_fun, x)
+```
+
+Function list could also be used in data description.
+
+```{r}
+x = c(1:10, NA)
+
+funs = list(
+  sum    = sum,
+  mean   = mean,
+  median = median
+)
+lapply(funs, function(f) f(x, na.rm = TRUE))
+```
+
+Another trick is to use `each`
+```{r}
+#Check out the each function in plyr
+summaries = plyr::each(mean, sd, median)
+summaries(1:10)
+```
+
+
+
+---
+
+3. Infix function
+
+Sometimes creating infix funcion could make code looks prettier. Infix function should be enclosed between %%. And illegal name could be used between ``.
+
+```{r}
+`%+%` = function(a, b) paste0(a, b)
+"new" %+% " string"
+```
+
+The following application returns default value for a function calls incase it return's null. **This function could be very usefull when building Shiny apps.**
+
+```{r}
+`%||%` = function(a, b) if (!is.null(a)) a else b
+
+function_that_might_return_null = function() NULL
+
+function_that_might_return_null() %||% 'default value'
+```
+
+---
+
+4. Replacement functions
+
+Take a look at the error return of following code. What is "mean<-" ?
+```{r error=TRUE}
+x = 1:10
+mean(x) = 999
+```
+
+A replacement function example is as follow. Replacement function could change object inplace. And it need to be named with a "<-"
+```{r}
+`second<-` = function(x, value) {
+  x[2] = value
+  x
+}
+x = 1:10
+second(x) = 5
+x
+```
+
+---
+
+5. How to loop vectors
+
+Using vectors to store element like this is slow. Because each time you extend the vector, R has to copy all of the existing elements.
+```{r}
+xs = runif(1e3)
+res = c()
+for (x in xs) {
+  res = c(res, sqrt(x))
+}
+```
+
+Instead:
+
+```{r}
+res = numeric(length(xs)) #Create empty vector and change in place
+for (i in seq_along(xs)) { #seq_along is looping the vector by index
+  res[i] = sqrt(xs[i])
+}
+```
+
+---
+
+6. Upgrading `sapply` to `vapply`.
+
+vapply could be used to limit the output of sapply.
+
+```{r}
+sapply(list(), is.numeric)
+vapply(list(), is.numeric, logical(1))
+```
+
+---
+
+7. Special conditions that `lapply` or `sapply` does not work
+
+When there are two or more list need to be looped through, try `Map`
+```{r}
+xs = replicate(5, runif(10), simplify = FALSE)
+ws = replicate(5, rpois(10, 5) + 1, simplify = FALSE)
+
+#This is the application of weighted mean of lapply
+unlist(lapply(seq_along(xs), function(i) {
+  weighted.mean(xs[[i]], ws[[i]])
+}))
+
+#Application in Map
+unlist(Map(weighted.mean, xs, ws))
+```
+
+When the list is ragged group.
+```{r}
+pulse = round(rnorm(22, 70, 10 / 3)) + rep(c(0, 5), c(10, 12)) # All data in ragged group
+group = rep(c("A", "B"), c(10, 12)) #Create index to separate the group
+
+tapply(X = pulse, INDEX = group, FUN = length)
+```
+
+---
+
+8. Merging several dataset with `Reduce`.
+
+See following code for how `reduce` work.
+```{r}
+Reduce(`+`, 1:3) # -> ((1 + 2) + 3)
+Reduce(sum, 1:3) # -> sum(sum(1, 2), 3)
+```
+
+Use `reduce` with `merge`
+```{r}
+a = data.frame(index = c('a','b','c'), val.a = c(1,2,3))
+b = data.frame(index = c('a','b','c'), val.b = c(1,3,2))
+c = data.frame(index = c('a','b','c'), val.c = c(2,1,3))
+d = data.frame(index = c('a','b','c'), val.d = c(3,1,2))
+
+Reduce(function(x,y) merge(x, y, by = 'index', all = TRUE), 
+       list(a,b,c,d))
+
+```
+
+---
+
+9. Use Memoization
+
+See details below, memoization could be useful when building shiny app that would often retrieve data directly from a database that do not change regularly in a shiny session. 
+
+https://www.inwt-statistics.com/read-blog/optimize-your-r-code-using-memoization.html
+
+```{r}
+#general idea of memoise is as follow
+memoise = function(fun) {
+  memory = list()
+  function(x) {
+    valueName = as.character(x)
+    if (!is.null(memory[[valueName]])) return(memory[[valueName]])
+    res = fun(x)
+    memory[[valueName]] <<- res
+    res
+  }
+}
+```
+
+---
+
+10. Compose functions
+```{r}
+sapply(mtcars, function(x) length(unique(x)))
+```
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+library(pryr)
+sapply(mtcars, compose(length, unique))
+```
+or 
+
+```{r}
+library(magrittr)
+sapply(mtcars, function(x) x %>% unique() %>% length()) #needs to define an extra anonymous function
+```
+---
+
+11. Dealing with empty input in RShiny
+
+Use `try` to assign value when it's possible that input doesn't exist
+```{r}
+x = 3
+try(x > mean, silent = TRUE) #The error is surpressed
+```
+
+
+12. Use `quote` and `subs` (or `substitude`) when assigning name
+
+13. Play with function calls
+
+```{r}
+mod = lm(mpg ~ wt, data = mtcars) #mod is a call
+update(mod, formula = . ~ . + cyl) #update could change the element inside that call
+```
+
+
+
+
+
+

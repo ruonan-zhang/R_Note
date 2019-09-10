@@ -1,0 +1,174 @@
+---
+title: "R Data Structure Note"
+author: "RuonanZhang"
+date: "July 30, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### Vectors
+
+Vectors in R comes with `atomic vector` and `list`. Both have: 1) Type 2) Length 3)Attributes. Element of atomic vector must have same type while list doesn't. 
+
+#### Atomic vectors
+**`is.vector()` only return TRUE when the object is a vector with no attribute except names. **
+```{r}
+a = c(1,2,3) #a is an atomic vector
+is.vector(a)
+dim(a) = 3 #Adding dim attribute to a
+is.vector(a)
+```
+
+Atomic vector has four common types.
+
+1. Logical
+2. integer
+3. double (numeric)
+4. charactor
+
+```{r}
+dbl_var = c(1, 2.5, 4.5)
+# With the L suffix, you get an integer rather than a double, integer cosume less memory
+int_var = c(1L, 6L, 10L) 
+# Use TRUE and FALSE (or T and F) to create logical vectors
+log_var = c(TRUE, FALSE, T, F)
+chr_var = c("these are", "some strings")
+```
+
+The following are checking functions for each type
+```{r}
+is.character(chr_var)
+is.double(dbl_var)
+is.integer(int_var)
+is.logical(log_var)
+sapply(list(chr_var, dbl_var, int_var, log_var), is.atomic)
+```
+
+Be careful of `is.numeric()` command, it return TRUE for both int and double.
+```{r}
+is.numeric(int_var)
+is.numeric(dbl_var)
+```
+
+
+What about NA?
+```{r}
+NA_test_dbl = c(NA, 2,3,4)
+NA_test_chr = c(NA, 'b','c','d')
+sapply(NA_test_dbl, class)
+```
+```{r}
+sapply(NA_test_chr, class)
+```
+They are converted into common types by default
+
+##### Coercion Sequence
+
+Types from least to most flexible are: logical, integer, double, and character.
+
+It means: double are more easy to coerce to character. Charactor would not be coerced to double by default.
+```{r}
+str(c("a", 1))
+```
+
+#### Lists
+
+List elements can be of any type.
+```{r}
+x = list(1:3, "a", c(TRUE, FALSE, TRUE), c(2.3, 5.9))
+str(x)
+```
+
+list() could combine two list and keep their struction. c() would flatten the list, which is always used as a method to `join` list.
+```{r}
+x <- list(list(1, 2), list(3, 4))
+y <- c(list(1, 2), list(3, 4))
+str(x)
+str(y)
+```
+
+### Attributes
+
+Remembered that both atomic vector and list have attributes. All objects can have arbitrary additional attributes, used to store metadata about the object. Attributes can be thought of as a named list (with unique names). Attributes can be accessed individually with `attr()` or all at once (as a list) with `attributes()`
+
+```{r}
+y = 1:10
+attr(y, "my_attribute") = "This is a vector" # we just added a metadata for y
+attr(y, "name") = "Name is y" # we just added a metadata for y
+attributes(y)
+```
+
+```{r}
+y
+```
+
+Most attribute would be lost when modifying the object.
+```{r}
+attributes(sum(y))
+```
+
+The only attributes not lost are the three most important:
+
+**Names**, a character vector giving each element a name, described in names.
+
+```{r}
+x = c(a = 1, b = 2, c = 3)
+str(x)
+
+#The following also works
+#x = 1:3
+#names(x) = c("a", "b", "c")
+
+#x = setNames(1:3, c("a", "b", "c"))
+```
+
+
+**Dimensions**, used to turn vectors into matrices and arrays, described in matrices and arrays.
+
+**Class**, used to implement the S3 object system.
+
+Those three attribute are not returned by `attributes()`, has to use their own functions.
+```{r}
+names(y) #y does not have name
+dim(y) #y does not have dimension
+class(y) 
+class(sum(y)) 
+```
+
+#### Factors
+A factor is a vector that can contain only predefined values, and is used to **store categorical data**. Factors are built on top of `integer` vectors using **two attributes**: the class, "factor", which makes them behave differently from regular integer vectors, and the levels, which defines the set of allowed values.
+
+*Simple version: a factor is a integer vector with two special attributes.*
+
+```{r}
+x = factor(c("a", "b", "b", "a"))
+class(x)
+levels(x)
+```
+
+Why use factor: make it obvious when some level has no observations
+```{r}
+sex_char = c("m", "m", "m")
+sex_factor = factor(sex_char, levels = c("m", "f"))
+
+table(sex_char)
+table(sex_factor)
+```
+
+Why is numerical value often converted to factor when read-in files?
+```{r}
+z = read.csv(text = "value\n12\n1\n.\n9")
+typeof(z$value)
+class(z$value) #Z$value is coerced into factor because missing value 
+```
+
+```{r}
+as.double(z$value) #converting to double type would cause problem, the levels are used
+```
+
+Avoid this by using NA check when read in data.
+
